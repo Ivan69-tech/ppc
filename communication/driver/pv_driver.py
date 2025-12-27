@@ -1,0 +1,20 @@
+import datamodel.standard_data as std_data
+import time
+from communication.interface import Driver
+from datamodel.datamodel import SystemObs, Command, EquipmentType
+
+
+class PvDriver(Driver):
+    def __init__(self):
+        self.n = 0
+
+    def read(self) -> SystemObs:
+        self.n += 1
+        pv = std_data.Pv(p=self.n, q=self.n * 10, timestamp=time.time())
+        return SystemObs(pv=[pv])
+
+    def write(self, command: Command):
+        print(f"Écriture commande PV: pSp={command.pSp}, qSp={command.qSp}")
+
+    def get_equipment_type(self) -> EquipmentType:
+        return EquipmentType.PV

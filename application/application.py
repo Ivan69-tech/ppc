@@ -1,46 +1,47 @@
-# core/application.py
+# application/application.py
 import threading
 from collections import deque
 import time
-from typing import Optional
+from typing import Optional, List
 
 from communication.interface import Driver
+from adapter.adapter import Adapter
 from core.orchestrator import Orchestrator
-from datamodel.datamodel import DataModel, Command
-from context.context import Context
+from datamodel.datamodel import SystemObs, Command
 
 
 class Application:
     """
     Application principale qui coordonne la communication et le traitement.
+    Supporte plusieurs drivers en parallèle avec agrégation des données.
     Encapsule la logique de threading, queues et verrous.
     """
 
     def __init__(
         self,
-        driver: Driver,
+        drivers: List[Driver],
         orchestrator: Orchestrator,
-        context: Context,
         communication_interval: float = 1.0,
-        process_interval: float = 5.0,
+        process_interval: float = 1.0,
     ):
         """
         Initialise l'application.
 
         Args:
-            driver: Driver de communication (Modbus, etc.)
+            drivers: Liste des drivers de communication (Modbus, etc.)
             orchestrator: Orchestrateur pour le traitement des mesures
             communication_interval: Intervalle entre les lectures/écritures (secondes)
             process_interval: Intervalle entre les traitements (secondes)
         """
-        self.driver = driver
+        self.drivers = drivers
         self.orchestrator = orchestrator
-        self.context = context
+        # Adapter pour agréger les données des drivers
+        self.adapter = Adapter(driver_outputs=[])
         self.communication_interval = communication_interval
         self.process_interval = process_interval
 
         # Deques avec maxlen=1 : remplace automatiquement l'ancien élément
-        self.dataobs_deque: deque[DataModel] = deque(maxlen=1)
+        self.dataobs_deque: deque[SystemObs] = deque(maxlen=1)
         self.cmd_deque: deque[Command] = deque(maxlen=1)
 
         # Verrous pour la sécurité thread
@@ -52,7 +53,7 @@ class Application:
         self._running = False
 
         # Références aux threads
-        self._communication_thread: Optional[threading.Thread] = None
+        self._aggregation_thread: Optional[threading.Thread] = None
         self._process_thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
@@ -63,12 +64,14 @@ class Application:
         self._stop_event.clear()
         self._running = True
 
-        self._communication_thread = threading.Thread(
-            target=self._communication_loop, daemon=True
+        # Thread pour l'agrégation des données
+        self._aggregation_thread = threading.Thread(
+            target=self._aggregation_loop, daemon=True
         )
+        # Thread pour le traitement
         self._process_thread = threading.Thread(target=self._process_loop, daemon=True)
 
-        self._communication_thread.start()
+        self._aggregation_thread.start()
         self._process_thread.start()
 
     def stop(self) -> None:
@@ -80,8 +83,8 @@ class Application:
         self._stop_event.set()
 
         # Attendre que les threads se terminent (avec timeout)
-        if self._communication_thread:
-            self._communication_thread.join(timeout=2.0)
+        if self._aggregation_thread:
+            self._aggregation_thread.join(timeout=2.0)
         if self._process_thread:
             self._process_thread.join(timeout=2.0)
 
@@ -99,29 +102,55 @@ class Application:
         finally:
             self.stop()
 
-    def _communication_loop(self) -> None:
-        """Boucle de communication : lit les mesures et écrit les commandes."""
+    def _aggregation_loop(self) -> None:
+        """
+        Boucle d'agrégation : collecte les données de tous les drivers,
+        les agrège et les met à disposition pour le traitement.
+        """
         while not self._stop_event.is_set():
             try:
-                self.driver.read(self.context)
-                with self.dataobs_lock:
-                    self.dataobs_deque.append(dataobs)
-                print(f"dataobs = {dataobs}")
+                # Lire les données de tous les drivers
+                driver_outputs: list[SystemObs] = []
+                for driver in self.drivers:
+                    try:
+                        system_obs = driver.read()
+                        driver_outputs.append(system_obs)
+                    except Exception as e:
+                        print(f"Erreur lors de la lecture du driver: {e}")
 
-                # Lire la commande si disponible
+                # Mettre à jour les sorties des drivers dans l'Adapter
+                self.adapter.driver_outputs = driver_outputs
+
+                # Agrégation des données via l'Adapter
+                aggregated_data = self.adapter.aggregate()
+
+                # Stocker les données agrégées
+                with self.dataobs_lock:
+                    self.dataobs_deque.append(aggregated_data)
+
+                print(f"Données agrégées: {aggregated_data}")
+
+                # Envoyer la commande si disponible
                 with self.cmd_lock:
                     if self.cmd_deque:
                         cmd = self.cmd_deque.popleft()
-                        self.driver.write(cmd)
+                        # Router la commande vers le driver correspondant à l'équipement
+                        for driver in self.drivers:
+                            try:
+                                # Vérifier si le driver gère le type d'équipement de la commande
+                                if driver.get_equipment_type() == cmd.equipment_type:
+                                    driver.write(cmd)
+                            except Exception as e:
+                                print(f"Erreur lors de l'écriture au driver: {e}")
 
             except Exception as e:
-                print(f"Erreur dans la boucle de communication: {e}")
+                print(f"Erreur dans la boucle d'agrégation: {e}")
 
             # Attendre l'intervalle ou l'arrêt
             self._stop_event.wait(self.communication_interval)
 
     def _process_loop(self) -> None:
-        """Boucle de traitement : traite les mesures et génère les commandes."""
+        """Boucle de traitement : traite les mesures agrégées et génère les commandes."""
         while not self._stop_event.is_set():
             try:
                 # Lire la dernière mesure disponible

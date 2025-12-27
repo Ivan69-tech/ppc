@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 # Export explicite de toutes les classes du module
-__all__ = ["Bess", "Pv", "StandardData"]
+__all__ = ["Bess", "Pv"]
 
 
 @dataclass(frozen=True)
@@ -17,9 +17,3 @@ class Pv:
     p: float
     q: float
     timestamp: float
-
-
-@dataclass(frozen=True)
-class StandardData:
-    bess: Bess
-    pv: Pv

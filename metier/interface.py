@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
-from datamodel.datamodel import DataModel, Command
+from datamodel.datamodel import SystemObs, Command
 
 
 class ControlFunction(ABC):
     @abstractmethod
-    def compute(self, datamodel: DataModel) -> Command:
+    def compute(self, system_obs: SystemObs) -> Command:
         pass
