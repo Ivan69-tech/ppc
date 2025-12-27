@@ -1,4 +1,5 @@
 # main.py
+import logging
 from typing import List
 
 from communication.driver.bess_driver import BessDriver
@@ -8,6 +9,13 @@ from metier.voltage_support.voltage_support import VoltageSupport
 from metier.interface import ControlFunction
 from core.orchestrator import Orchestrator
 from application.application import Application
+
+# Configuration du logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 def main():
