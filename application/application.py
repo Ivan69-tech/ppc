@@ -103,7 +103,7 @@ class Application:
         """Boucle de communication : lit les mesures et écrit les commandes."""
         while not self._stop_event.is_set():
             try:
-                dataobs = self.driver.read(self.context)
+                self.driver.read(self.context)
                 with self.dataobs_lock:
                     self.dataobs_deque.append(dataobs)
                 print(f"dataobs = {dataobs}")
