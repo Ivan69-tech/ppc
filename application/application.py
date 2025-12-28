@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional, List
 
 from communication.interface import Driver
+from communication.interface import Server
 from adapter.adapter import Adapter
 from core.orchestrator import Orchestrator
 from datamodel.datamodel import SystemObs, Command
@@ -42,6 +43,7 @@ class Application:
     def __init__(
         self,
         drivers: List[Driver],
+        server: Server,
         orchestrator: Orchestrator,
         communication_interval: float = 1.0,
         process_interval: float = 1.0,
@@ -61,7 +63,7 @@ class Application:
         self.orchestrator = orchestrator
 
         # Adapter gère la communication avec les drivers
-        self.adapter: Adapter = Adapter(drivers=drivers)
+        self.adapter: Adapter = Adapter(drivers=drivers, server=server)
         self.communication_interval = communication_interval
         self.process_interval = process_interval
 
@@ -86,6 +88,7 @@ class Application:
         # Références aux threads
         self._aggregation_thread: Optional[threading.Thread] = None
         self._process_thread: Optional[threading.Thread] = None
+        self._server_thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
         """Démarre les threads de communication et traitement."""
@@ -101,9 +104,13 @@ class Application:
         )
         # Thread pour le traitement
         self._process_thread = threading.Thread(target=self._process_loop, daemon=True)
+        # Thread pour la synchronisation du serveur Modbus
+        self._server_thread = threading.Thread(target=self._server_loop, daemon=True)
 
         self._aggregation_thread.start()
         self._process_thread.start()
+        self._start_modbus_server()
+        self._server_thread.start()
 
     def stop(self) -> None:
         """Arrête proprement les threads."""
@@ -118,6 +125,11 @@ class Application:
             self._aggregation_thread.join(timeout=2.0)
         if self._process_thread:
             self._process_thread.join(timeout=2.0)
+        if self._server_thread:
+            self._server_thread.join(timeout=2.0)
+
+        # Arrêter le serveur Modbus
+        self._stop_modbus_server()
 
         # Fermer la connexion à la base de données
         self.database.close()
@@ -171,6 +183,51 @@ class Application:
                 logger.error(f"Erreur dans la boucle d'agrégation: {e}", exc_info=True)
 
             # Attendre l'intervalle ou l'arrêt
+            self._stop_event.wait(self.communication_interval)
+
+    def _start_modbus_server(self) -> None:
+        """
+        Démarre le serveur Modbus.
+        Le serveur Modbus est démarré dans son propre thread par la méthode expose_server.
+        """
+        try:
+            # Initialiser le serveur avec un SystemObs vide
+            # Le serveur sera mis à jour régulièrement par _server_loop
+            initial_system_obs = SystemObs()
+            self.adapter.server.expose_server(initial_system_obs)
+            logger.info("Serveur Modbus démarré")
+        except Exception as e:
+            logger.error(
+                f"Erreur lors du démarrage du serveur Modbus: {e}", exc_info=True
+            )
+
+    def _stop_modbus_server(self) -> None:
+        """Arrête le serveur Modbus."""
+        try:
+            # Le serveur Modbus s'arrête automatiquement quand le thread principal se termine
+            # car il est démarré en mode daemon dans ModbusServer.expose_server()
+            # Vérifier si c'est une instance de ModbusServer pour accéder à server_running
+            from communication.server.modbus_server import ModbusServer
+
+            if isinstance(self.adapter.server, ModbusServer):
+                self.adapter.server.server_running = False
+            logger.info("Serveur Modbus arrêté")
+        except Exception as e:
+            logger.error(
+                f"Erreur lors de l'arrêt du serveur Modbus: {e}", exc_info=True
+            )
+
+    def _server_loop(self) -> None:
+        """Boucle de synchronisation avec le serveur Modbus."""
+        while not self._stop_event.is_set():
+            try:
+                # Synchroniser le serveur avec les données agrégées actuelles
+                self.adapter.sync_server()
+            except Exception as e:
+                logger.error(
+                    f"Erreur dans la boucle de synchronisation avec le serveur: {e}",
+                    exc_info=True,
+                )
             self._stop_event.wait(self.communication_interval)
 
     def _process_loop(self) -> None:

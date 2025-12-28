@@ -14,3 +14,17 @@ class Driver(ABC):
     @abstractmethod
     def get_equipment_type(self) -> EquipmentType:
         pass
+
+
+class Server(ABC):
+    @abstractmethod
+    def expose_server(
+        self, system_obs: SystemObs
+    ):  # synchronise le serve avec le SystemObs actuel
+        pass
+
+    @abstractmethod
+    def fill_system_obs(
+        self,
+    ) -> SystemObs:  # remplit le SystemObs avec les données du serveur
+        pass

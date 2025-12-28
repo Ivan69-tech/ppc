@@ -2,7 +2,8 @@ import logging
 from dataclasses import fields
 from typing import Any, List
 from datamodel.datamodel import SystemObs, Command
-from communication.interface import Driver
+from communication.interface import Driver, Server
+
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ class Adapter:
     et de l'envoi des commandes aux drivers appropriés.
     """
 
-    def __init__(self, drivers: List[Driver]):
+    def __init__(self, drivers: List[Driver], server: Server):
         """
         Initialise l'Adapter avec la liste des drivers.
 
@@ -22,6 +23,7 @@ class Adapter:
             drivers: Liste des drivers de communication (Modbus, etc.)
         """
         self.drivers = drivers
+        self.server = server
         self.global_system_obs = SystemObs()
 
     def read_and_aggregate(self) -> SystemObs:
@@ -32,21 +34,24 @@ class Adapter:
             SystemObs agrégé contenant toutes les données des drivers
         """
         # Lire les données de tous les drivers
-        driver_outputs: list[SystemObs] = []
+        external_outputs: list[SystemObs] = []
+
         for driver in self.drivers:
             try:
                 system_obs = driver.read()
-                driver_outputs.append(system_obs)
+                external_outputs.append(system_obs)
             except Exception as e:
                 logger.error(
                     f"Erreur lors de la lecture du driver {type(driver).__name__}: {e}",
                     exc_info=True,
                 )
 
+        external_outputs.append(self.server.fill_system_obs())  # data from server
+
         # Agrégation des données
-        aggregated_data = self._aggregate(driver_outputs)
-        self.global_system_obs = aggregated_data
-        return aggregated_data
+        aggregated_system_obs = self._aggregate(external_outputs)
+        self.global_system_obs = aggregated_system_obs
+        return aggregated_system_obs
 
     def send_commands(self, commands: List[Command]) -> None:
         """
@@ -72,14 +77,14 @@ class Adapter:
                         exc_info=True,
                     )
 
-    def _aggregate(self, driver_outputs: list[SystemObs]) -> SystemObs:
+    def _aggregate(self, external_outputs: list[SystemObs]) -> SystemObs:
         """
         Agrège les sorties de tous les drivers dans un SystemObs global.
         Accumule automatiquement tous les champs de type liste (sauf timestamp).
         Cette méthode est générique et s'adapte automatiquement aux évolutions de SystemObs.
 
         Args:
-            driver_outputs: Liste des SystemObs provenant des drivers
+            external_outputs: Liste des SystemObs provenant des drivers et du serveur
 
         Returns:
             SystemObs agrégé
@@ -101,11 +106,14 @@ class Adapter:
             accumulated_list: list[Any] = []
 
             # Parcourir tous les SystemObs des drivers
-            for system_obs in driver_outputs:
+            for system_obs in external_outputs:
                 field_value = getattr(system_obs, field_name)
                 if field_value:
-                    accumulated_list.extend(field_value)  # type: ignore[arg-type]
+                    accumulated_list.extend(field_value)
 
             accumulated_values[field_name] = accumulated_list
 
-        return SystemObs(**accumulated_values)  # type: ignore[arg-type]
+        return SystemObs(**accumulated_values)
+
+    def sync_server(self):
+        self.server.expose_server(self.global_system_obs)

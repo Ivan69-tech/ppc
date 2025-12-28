@@ -1,4 +1,4 @@
-Premier jet contrôle logiciel
+# EMS
 
 Système de contrôle et de gestion pour centrales électriques hybrides, intégrant des équipements BESS (Battery Energy
 Storage System) et PV (Photovoltaic). Le système collecte les données des équipements, applique des fonctions de
