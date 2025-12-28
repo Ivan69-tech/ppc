@@ -59,8 +59,9 @@ class Application:
         """
         self.drivers = drivers
         self.orchestrator = orchestrator
-        # Adapter pour agréger les données des drivers
-        self.adapter = Adapter(driver_outputs=[])
+
+        # Typé comme Adapter[SystemObs] pour préserver le type de retour
+        self.adapter: Adapter = Adapter(driver_outputs=[])
         self.communication_interval = communication_interval
         self.process_interval = process_interval
 
