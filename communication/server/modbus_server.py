@@ -78,19 +78,6 @@ class ModbusServer(Server):
             self.slave_context.setValues(3, self.REG_P_BESS, [0])
             self.slave_context.setValues(3, self.REG_Q_BESS, [0])
 
-    def _handle_write_register(self, address: int, value: int):
-        """
-        Gère l'écriture dans un registre.
-
-        Args:
-            address: Adresse du registre
-            value: Valeur écrite
-        """
-        if address == self.REG_SETPOINT_BESS:
-            setpoint_float = value / 100.0
-            with self.setpoint_lock:
-                self.setpoint_value = setpoint_float
-
     def expose_server(self, system_obs: SystemObs):
         """
         Démarre le serveur Modbus et expose les données du SystemObs.
@@ -142,14 +129,17 @@ class ModbusServer(Server):
         Returns:
             SystemObs contenant le ProjectData avec BESS_SETPOINT_KEY si une valeur a été écrite
         """
-        with self.setpoint_lock:
-            if self.setpoint_value is not None:
-                project_data = ProjectData(
-                    name=Keys.BESS_SETPOINT_KEY,
-                    project_data=self.setpoint_value,
-                    timestamp=time.time(),
-                )
-                self.setpoint_value = None
-                return SystemObs(project_data=[project_data])
+        bess_sp_values = self.slave_context.getValues(3, self.REG_SETPOINT_BESS, 1)  # type: ignore
 
-        return SystemObs()
+        if bess_sp_values:  # type: ignore
+            bess_sp: float = float(int(bess_sp_values[0]))  # type: ignore
+        else:
+            bess_sp: float = 0.0
+
+        project_data = ProjectData(
+            name=Keys.BESS_SETPOINT_KEY,
+            value=bess_sp,
+            timestamp=time.time(),
+        )
+        print("data from server: ", project_data)
+        return SystemObs(project_data=[project_data])

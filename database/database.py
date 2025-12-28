@@ -63,7 +63,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS project_data (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
-                project_data REAL NOT NULL,
+                value REAL NOT NULL,
                 timestamp REAL NOT NULL
             )
         """)
@@ -110,10 +110,10 @@ class Database:
             if system_obs.project_data:
                 for project_data in system_obs.project_data:
                     cursor.execute(
-                        "INSERT INTO project_data (name, project_data, timestamp) VALUES (?, ?, ?)",
+                        "INSERT INTO project_data (name, value, timestamp) VALUES (?, ?, ?)",
                         (
                             project_data.name,
-                            project_data.project_data,
+                            project_data.value,
                             project_data.timestamp,
                         ),
                     )

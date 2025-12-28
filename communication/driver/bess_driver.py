@@ -16,7 +16,7 @@ class BessDriver(Driver):
             project_data=[
                 ProjectData(
                     name=Keys.TEMPERATURE_BESS_KEY,
-                    project_data=20.0,
+                    value=20.0,
                     timestamp=time.time(),
                 )
             ],

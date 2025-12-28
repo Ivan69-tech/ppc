@@ -17,7 +17,7 @@ class PvDriver(Driver):
             pv=[pv],
             project_data=[
                 ProjectData(
-                    name=Keys.IRRADIANCE_KEY, project_data=1000.0, timestamp=time.time()
+                    name=Keys.IRRADIANCE_KEY, value=1000.0, timestamp=time.time()
                 )
             ],
         )
