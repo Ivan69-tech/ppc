@@ -33,8 +33,9 @@ def get_daily_db_path() -> str:
 
 class Application:
     """
-    Application principale qui coordonne la communication et le traitement.
-    Supporte plusieurs drivers en parallèle avec agrégation des données.
+    Application principale qui orchestre le flux de données entre les couches.
+    Coordonne les threads, délègue la communication aux drivers à l'Adapter,
+    et orchestre le traitement métier via l'Orchestrator.
     Encapsule la logique de threading, queues et verrous.
     """
 
@@ -57,11 +58,10 @@ class Application:
             db_path: Chemin vers le fichier de base de données (.db).
                      Si None, utilise automatiquement db/YYYY_MM_DD.db basé sur la date du jour.
         """
-        self.drivers = drivers
         self.orchestrator = orchestrator
 
-        # Typé comme Adapter[SystemObs] pour préserver le type de retour
-        self.adapter: Adapter = Adapter(driver_outputs=[])
+        # Adapter gère la communication avec les drivers
+        self.adapter: Adapter = Adapter(drivers=drivers)
         self.communication_interval = communication_interval
         self.process_interval = process_interval
 
@@ -138,28 +138,13 @@ class Application:
 
     def _aggregation_loop(self) -> None:
         """
-        Boucle d'agrégation : collecte les données de tous les drivers,
-        les agrège et les met à disposition pour le traitement.
+        Boucle d'agrégation : délègue la collecte et l'agrégation des données à l'Adapter,
+        puis met les données à disposition pour le traitement.
         """
         while not self._stop_event.is_set():
             try:
-                # Lire les données de tous les drivers
-                driver_outputs: list[SystemObs] = []
-                for driver in self.drivers:
-                    try:
-                        system_obs = driver.read()
-                        driver_outputs.append(system_obs)
-                    except Exception as e:
-                        logger.error(
-                            f"Erreur lors de la lecture du driver {type(driver).__name__}: {e}",
-                            exc_info=True,
-                        )
-
-                # Mettre à jour les sorties des drivers dans l'Adapter
-                self.adapter.driver_outputs = driver_outputs
-
-                # Agrégation des données via l'Adapter
-                aggregated_data = self.adapter.aggregate()
+                # Déléguer la lecture et l'agrégation à l'Adapter
+                aggregated_data = self.adapter.read_and_aggregate()
 
                 # Stocker les données agrégées
                 with self.dataobs_lock:
@@ -176,30 +161,11 @@ class Application:
 
                 logger.debug(f"Données agrégées: {aggregated_data}")
 
-                # Envoyer les commandes si disponibles
+                # Envoyer les commandes si disponibles (délégué à l'Adapter)
                 with self.cmd_lock:
                     if self.cmd_deque:
                         commands = self.cmd_deque.popleft()
-                        # Router chaque commande vers le driver correspondant à son type d'équipement
-                        for cmd in commands:
-                            for driver in self.drivers:
-                                try:
-                                    # Vérifier si le driver gère le type d'équipement de la commande
-                                    if (
-                                        driver.get_equipment_type()
-                                        == cmd.equipment_type
-                                    ):
-                                        driver.write(cmd)
-                                        logger.debug(
-                                            f"Commande envoyée à {type(driver).__name__}: "
-                                            f"pSp={cmd.pSp}, qSp={cmd.qSp}"
-                                        )
-                                        break  # Une commande envoyée, passer à la suivante
-                                except Exception as e:
-                                    logger.error(
-                                        f"Erreur lors de l'écriture au driver {type(driver).__name__}: {e}",
-                                        exc_info=True,
-                                    )
+                        self.adapter.send_commands(commands)
 
             except Exception as e:
                 logger.error(f"Erreur dans la boucle d'agrégation: {e}", exc_info=True)
