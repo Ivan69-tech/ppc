@@ -23,7 +23,8 @@ class BessDriver(Driver):
         )
 
     def write(self, command: Command):
-        print(f"Écriture commande BESS: pSp={command.pSp}, qSp={command.qSp}")
+        print(f"Writing command: {command}")
+        pass
 
     def get_equipment_type(self) -> EquipmentType:
         return EquipmentType.BESS

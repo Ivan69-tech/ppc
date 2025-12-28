@@ -17,6 +17,12 @@ class SystemObs:
     pv: list[Pv] = field(default_factory=list)  # type: ignore
     project_data: list[ProjectData] = field(default_factory=list)  # type: ignore
 
+    def get_project_data(self, name: str) -> ProjectData | None:
+        for project_data in self.project_data:
+            if project_data.name == name:
+                return project_data
+        return None
+
 
 @dataclass(frozen=True)
 class Command:

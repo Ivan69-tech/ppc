@@ -23,7 +23,7 @@ class PvDriver(Driver):
         )
 
     def write(self, command: Command):
-        print(f"Écriture commande PV: pSp={command.pSp}, qSp={command.qSp}")
+        pass
 
     def get_equipment_type(self) -> EquipmentType:
         return EquipmentType.PV

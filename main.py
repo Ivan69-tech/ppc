@@ -18,6 +18,9 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
+# Désactiver les logs INFO de transitions pour éviter le bruit dans les logs
+logging.getLogger("transitions.core").setLevel(logging.WARNING)
+
 
 def main():
     """Point d'entrée principal de l'application."""

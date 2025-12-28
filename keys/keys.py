@@ -10,3 +10,4 @@ class Keys:
     IRRADIANCE_KEY = "irradiance"
     BESS_SETPOINT_KEY = "bess_setpoint"
     PV_SETPOINT_KEY = "pv_setpoint"
+    WATCHDOG_BESS_KEY = "watchdog_bess"

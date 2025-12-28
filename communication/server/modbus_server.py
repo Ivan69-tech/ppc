@@ -28,6 +28,7 @@ class ModbusServer(Server):
     REG_P_BESS = 102
     REG_Q_BESS = 104
     REG_SETPOINT_BESS = 500
+    REG_WATCHDOG_BESS = 502
 
     def __init__(self, host: str = "localhost", port: int = 5020):
         """
@@ -42,6 +43,8 @@ class ModbusServer(Server):
         self.current_system_obs: Optional[SystemObs] = None
         self.setpoint_value: Optional[float] = None
         self.setpoint_lock = threading.Lock()
+        # Verrou pour protéger l'accès thread-safe au slave_context
+        self.slave_context_lock = threading.Lock()
         self.server_thread: Optional[threading.Thread] = None
         self.server_running = False
         self.slave_context: ModbusSlaveContext = self._create_slave_context()
@@ -67,16 +70,22 @@ class ModbusServer(Server):
         if self.current_system_obs.bess and len(self.current_system_obs.bess) > 0:
             bess_data = self.current_system_obs.bess[0]
 
-        if bess_data:
-            self.slave_context.setValues(
-                3, self.REG_SOC_BESS, [int(bess_data.soc * 100)]
-            )
-            self.slave_context.setValues(3, self.REG_P_BESS, [int(bess_data.p * 100)])
-            self.slave_context.setValues(3, self.REG_Q_BESS, [int(bess_data.q * 100)])
-        else:
-            self.slave_context.setValues(3, self.REG_SOC_BESS, [0])
-            self.slave_context.setValues(3, self.REG_P_BESS, [0])
-            self.slave_context.setValues(3, self.REG_Q_BESS, [0])
+        # Protéger l'accès au slave_context avec un verrou
+        with self.slave_context_lock:
+            if bess_data:
+                self.slave_context.setValues(
+                    3, self.REG_SOC_BESS, [int(bess_data.soc * 100)]
+                )
+                self.slave_context.setValues(
+                    3, self.REG_P_BESS, [int(bess_data.p * 100)]
+                )
+                self.slave_context.setValues(
+                    3, self.REG_Q_BESS, [int(bess_data.q * 100)]
+                )
+            else:
+                self.slave_context.setValues(3, self.REG_SOC_BESS, [0])
+                self.slave_context.setValues(3, self.REG_P_BESS, [0])
+                self.slave_context.setValues(3, self.REG_Q_BESS, [0])
 
     def expose_server(self, system_obs: SystemObs):
         """
@@ -129,17 +138,41 @@ class ModbusServer(Server):
         Returns:
             SystemObs contenant le ProjectData avec BESS_SETPOINT_KEY si une valeur a été écrite
         """
-        bess_sp_values = self.slave_context.getValues(3, self.REG_SETPOINT_BESS, 1)  # type: ignore
+        # Protéger l'accès au slave_context avec un verrou pour éviter les race conditions
+        # Le serveur Modbus peut écrire dans ce registre depuis un autre thread
+        with self.slave_context_lock:
+            try:
+                bess_sp_values = self.slave_context.getValues(  # type: ignore
+                    3, self.REG_SETPOINT_BESS, 1
+                )
+            except Exception:
+                # En cas d'erreur, retourner une valeur par défaut
+                bess_sp_values = [0]
 
-        if bess_sp_values:  # type: ignore
-            bess_sp: float = float(int(bess_sp_values[0]))  # type: ignore
-        else:
-            bess_sp: float = 0.0
+            if bess_sp_values and len(bess_sp_values) > 0:  # type: ignore
+                bess_sp: float = float(int(bess_sp_values[0]))  # type: ignore
+            else:
+                bess_sp: float = 0.0
 
-        project_data = ProjectData(
-            name=Keys.BESS_SETPOINT_KEY,
-            value=bess_sp,
-            timestamp=time.time(),
+        watchdog_bess_values = self.slave_context.getValues(  # type: ignore
+            3, self.REG_WATCHDOG_BESS, 1
         )
-        print("data from server: ", project_data)
-        return SystemObs(project_data=[project_data])
+        if watchdog_bess_values and len(watchdog_bess_values) > 0:  # type: ignore
+            watchdog_bess: float = float(int(watchdog_bess_values[0]))  # type: ignore
+        else:
+            watchdog_bess: float = 0.0
+
+        return SystemObs(
+            project_data=[
+                ProjectData(
+                    name=Keys.BESS_SETPOINT_KEY,
+                    value=bess_sp,
+                    timestamp=time.time(),
+                ),
+                ProjectData(
+                    name=Keys.WATCHDOG_BESS_KEY,
+                    value=watchdog_bess,
+                    timestamp=time.time(),
+                ),
+            ]
+        )
