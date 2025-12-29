@@ -1,7 +1,7 @@
-from datamodel.datamodel import SystemObs, Command, EquipmentType
+from datamodel.datamodel import SystemObs, Command
 from metier.interface import ControlFunction
-from keys.keys import Keys
 from metier.voltage_support.state_machine import StateMachine
+from metier.voltage_support.policy import Policy
 
 
 class VoltageSupport(ControlFunction):
@@ -10,13 +10,4 @@ class VoltageSupport(ControlFunction):
 
     def compute(self, system_obs: SystemObs) -> list[Command]:
         self.state_machine.update(system_obs)
-        bess_sp = system_obs.get_project_data(Keys.BESS_SETPOINT_KEY)
-        if bess_sp is None:
-            return [Command(pSp=0, qSp=0, equipment_type=EquipmentType.BESS)]
-
-        if self.state_machine.get_state() == "auto":
-            return [
-                Command(pSp=bess_sp.value, qSp=0, equipment_type=EquipmentType.BESS),
-            ]
-        else:
-            return [Command(pSp=0, qSp=0, equipment_type=EquipmentType.BESS)]
+        return Policy(system_obs, self.state_machine).define_law()
