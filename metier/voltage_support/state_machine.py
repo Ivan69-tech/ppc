@@ -4,6 +4,26 @@ from keys.keys import Keys
 from metier.utils.watchog import Watchdog, WatchdogState
 
 
+# États
+states = ["auto", "error"]
+
+# Transitions
+transitions = [
+    {
+        "trigger": "update_state",
+        "source": "auto",
+        "dest": "error",
+        "conditions": "is_watchdog_disconnected",
+    },
+    {
+        "trigger": "update_state",
+        "source": "error",
+        "dest": "auto",
+        "conditions": "is_watchdog_connected",
+    },
+]
+
+
 class StateMachine:
     """
     Machine à états pour gérer les transitions entre les états AUTO et ERROR.
@@ -13,9 +33,6 @@ class StateMachine:
 
     Utilise la bibliothèque transitions pour gérer les états et transitions.
     """
-
-    # États possibles
-    states = ["auto", "error"]
 
     def __init__(
         self, timeout_seconds: float = 5.0, min_heartbeat_interval: float = 0.5
@@ -33,27 +50,15 @@ class StateMachine:
             min_heartbeat_interval=min_heartbeat_interval,
         )
 
-        # Initialiser la machine à états avec transitions
-        # L'état initial est "auto"
-        self.machine = Machine(  # type: ignore
+        # Création de la machine
+        self.machine = Machine(
             model=self,
-            states=StateMachine.states,
-            initial="auto",
-            auto_transitions=False,  # Désactiver les transitions automatiques
+            states=states,
+            transitions=transitions,
+            initial="error",
         )
 
-        # Définir les transitions
-        self.machine.add_transition(  # type: ignore
-            "to_error", "auto", "error", conditions="is_watchdog_disconnected"
-        )
-        self.machine.add_transition(  # type: ignore
-            "to_auto", "error", "auto", conditions="is_watchdog_connected"
-        )
-        # Permettre de rester dans le même état si les conditions ne sont pas remplies
-        self.machine.add_transition("stay_auto", "auto", "auto")  # type: ignore
-        self.machine.add_transition("stay_error", "error", "error")  # type: ignore
-
-    def update(self, system_obs: SystemObs) -> str:
+    def update(self, system_obs: SystemObs):
         """
         Met à jour la machine à états en fonction du SystemObs.
 
@@ -61,8 +66,7 @@ class StateMachine:
             system_obs: SystemObs contenant les données du système, notamment
                        le watchdog BESS dans project_data
 
-        Returns:
-            str: L'état actuel après la mise à jour ("auto" ou "error")
+
         """
         # Récupérer la valeur du watchdog BESS depuis le SystemObs
         watchdog_project_data = system_obs.get_project_data(Keys.WATCHDOG_BESS_KEY)
@@ -73,19 +77,7 @@ class StateMachine:
                 watchdog_project_data.value, watchdog_project_data.timestamp
             )
 
-        # Déclencher les transitions en fonction de l'état du watchdog
-        if self.state == "auto":  # type: ignore
-            if self.is_watchdog_disconnected():
-                self.to_error()  # type: ignore
-            else:
-                self.stay_auto()  # type: ignore
-        elif self.state == "error":  # type: ignore
-            if self.is_watchdog_connected():
-                self.to_auto()  # type: ignore
-            else:
-                self.stay_error()  # type: ignore
-
-        return self.state  # type: ignore
+        self.update_state()  # type: ignore
 
     def is_watchdog_disconnected(self) -> bool:
         """
