@@ -4,96 +4,33 @@ Système de contrôle et de gestion pour centrales électriques hybrides, intég
 Storage System) et PV (Photovoltaic). Le système collecte les données des équipements, applique des fonctions de
 contrôle métier, et génère des commandes pour piloter les équipements.
 
+/!\ ceci est une première ébauche. Fonctionnelle mais non finalisée (évidemment)
+
 ## Architecture
 
 Le système suit une architecture en couches avec séparation claire des responsabilités :
 
-- **Communication** : Interface avec les équipements physiques via des drivers (Modbus, etc.)
-- **Adapter** : Adaptation entre le monde externe (drivers) et le domaine applicatif
+- **Communication** : Interface avec les équipements physiques via des drivers (Modbus, etc.) et serveur Modbus pour
+  exposer les données
+- **Adapter** : Adaptation entre le monde externe (drivers, server) et le domaine applicatif
 - **Application** : Orchestration du flux de données et gestion des threads
 - **Core** : Orchestration des fonctions métier
-- **Métier** : Fonctions de contrôle (voltage support, etc.)
+- **Métier** : Fonctions de contrôle (voltage support, etc.) avec machines à états, politiques et lois de contrôle
 - **Database** : Persistance des données agrégées
 
 ## Schéma des flux de données
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Application                             │
-│  ┌──────────────────┐         ┌──────────────────┐              │
-│  │ Aggregation Loop │         │  Process Loop    │              │
-│  │  (Thread 1)      │         │   (Thread 2)     │              │
-│  └────────┬─────────┘         └────────┬─────────┘              │
-│           │                            │                        │
-│           │                            │                        │
-└───────────┼────────────────────────────┼────────────────────────┘
-            │                            │
-            │                            │
-            ▼                            │
-┌────────────────────────────────────────┴───────────────────────┐
-│                          Adapter                               │
-│  ┌──────────────────┐         ┌──────────────────┐             │
-│  │ read_and_        │         │ send_commands()  │             │
-│  │ aggregate()      │         │                  │             │
-│  └────────┬─────────┘         └────────┬─────────┘             │
-│           │                            │                       │
-│           │                            │                       │
-│           ▼                            │                       │
-│  ┌──────────────────┐                  │                       │
-│  │  _aggregate()    │                  │                       │
-│  └──────────────────┘                  │                       │
-└───────────┬────────────────────────────┘                       │
-            │                                                    │
-            │                                                    │
-    ┌───────┴────────┐                              ┌────────────┴──────────┐
-    │                │                              │                       │
-    ▼                ▼                              ▼                       ▼
-┌───────────┐  ┌───────────┐                ┌───────────┐         ┌──────────────┐
-│BessDriver │  │ PvDriver  │                │ Database  │         │ Orchestrator │
-│           │  │           │                │           │         │              │
-│ read()    │  │ read()    │                │ save()    │         │  step()      │
-│ write()   │  │ write()   │                │           │         │              │
-└─────┬─────┘  └─────┬─────┘                └───────────┘         └──────┬───────┘
-      │              │                                                   │
-      │              │                                                   │
-      └──────┬───────┘                                                   │
-             │                                                           │
-             │                                                           │
-             ▼                                                           │
-      ┌──────────────┐                                                   │
-      │  SystemObs   │                                                   │
-      │  (agrégé)    │                                                   │
-      └──────┬───────┘                                                   │
-             │                                                           │
-             │                                                           │
-             └───────────────────────────────┬───────────────────────────┘
-                                             │
-                                             │
-                                             ▼
-                                    ┌──────────────┐
-                                    │ ControlFunc  │
-                                    │ (VoltageSup.)│
-                                    │  compute()   │
-                                    └──────┬───────┘
-                                           │
-                                           │
-                                           ▼
-                                    ┌──────────────┐
-                                    │   Command    │
-                                    │   (List)     │
-                                    └──────┬───────┘
-                                           │
-                                           │ (retour vers Adapter)
-                                           │
-```
+![Schéma de l'architecture logicielle](logiciel_architecture.png)
 
 ### Description du flux
 
 1. **Collecte des données** (Thread d'agrégation)
 
    - L'Adapter lit les données de tous les drivers (BessDriver, PvDriver)
+   - L'Adapter lit également les données du serveur Modbus (setpoints, watchdog)
    - Chaque driver retourne un `SystemObs` avec ses données spécifiques
    - L'Adapter agrège tous les `SystemObs` en un seul `SystemObs` global
+   - Le serveur Modbus expose les données agrégées (SOC, P, Q BESS) via des registres Modbus
    - Les données agrégées sont stockées dans une queue thread-safe
    - Les données sont sauvegardées dans la base de données SQLite
 
@@ -111,31 +48,40 @@ Le système suit une architecture en couches avec séparation claire des respons
 
 ## Structure du projet
 
-```
+```text
 ppc/
 ├── adapter/              # Adaptation entre drivers et domaine
 │   └── adapter.py        # Lecture, agrégation, envoi de commandes
 ├── application/          # Couche d'orchestration
 │   └── application.py    # Gestion des threads et coordination
 ├── communication/        # Interface avec les équipements
-│   ├── interface.py      # Interface Driver (ABC)
-│   └── driver/
-│       ├── bess_driver.py    # Driver pour équipements BESS
-│       └── pv_driver.py      # Driver pour équipements PV
+│   ├── interface.py      # Interface Driver (ABC) et Server
+│   ├── driver/
+│   │   ├── bess_driver.py    # Driver pour équipements BESS
+│   │   └── pv_driver.py      # Driver pour équipements PV
+│   └── server/
+│       └── modbus_server.py  # Serveur Modbus pour exposer les données et recevoir des commandes
 ├── core/                 # Logique métier de coordination
 │   └── orchestrator.py   # Orchestration des fonctions de contrôle
 ├── database/             # Persistance des données
 │   └── database.py       # Interface SQLite pour SystemObs
 ├── datamodel/            # Modèles de données
 │   ├── datamodel.py      # SystemObs, Command, EquipmentType
+│   ├── interface.py      # Interface Protocol pour données avec timestamp
 │   ├── standard_data.py  # Bess, Pv
 │   └── project_data.py   # ProjectData
 ├── keys/                 # Constantes et clés
 │   └── keys.py           # Clés pour ProjectData
 ├── metier/               # Fonctions de contrôle métier
 │   ├── interface.py      # Interface ControlFunction
+│   ├── utils/
+│   │   └── watchog.py    # Watchdog pour surveiller la connexion des équipements
 │   └── voltage_support/
-│       └── voltage_support.py  # Fonction de contrôle voltage support
+│       ├── voltage_support.py  # Fonction de contrôle voltage support
+│       ├── state_machine.py   # Machine à états (AUTO/ERROR)
+│       ├── policy.py          # Politique de sélection des lois de contrôle
+│       └── law.py             # Lois de contrôle (normal_law, error_law)
+├── config/               # Configuration (à venir)
 ├── db/                   # Base de données SQLite (générée automatiquement)
 │   └── YYYY_MM_DD.db     # Fichiers de base de données par jour
 ├── main.py               # Point d'entrée principal
@@ -152,14 +98,9 @@ ppc/
 ### Installation des dépendances
 
 ```bash
-# Créer un environnement virtuel (recommandé)
 python3 -m venv venv
-source venv/bin/activate  # Sur Linux/Mac
-# ou
-venv\Scripts\activate  # Sur Windows
-
-# Les dépendances sont minimales (SQLite est intégré à Python)
-# Aucune installation supplémentaire requise pour le moment
+source venv/bin/activate
+pip install pymodbus transitions
 ```
 
 ## Utilisation
