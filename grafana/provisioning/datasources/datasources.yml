@@ -1,0 +1,6 @@
+apiVersion: 1
+
+datasources:
+  # Les datasources peuvent être définies ici en YAML
+  # ou créées manuellement dans l'interface Grafana
+  # Elles seront sauvegardées dans data/datasources/

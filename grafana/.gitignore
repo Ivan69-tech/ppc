@@ -1,0 +1,14 @@
+# Fichiers temporaires et logs Grafana (ne pas versionner)
+data/logs/
+data/sessions/
+data/plugins/
+data/png/
+data/grafana.db
+data/grafana.db-journal
+data/grafana.db-wal
+data/grafana.db-shm
+
+# Garder uniquement les dashboards et datasources (versionnés)
+!data/dashboards/
+!data/datasources/
+

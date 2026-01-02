@@ -1,0 +1,3 @@
+# Ce dossier contient les données Grafana (dashboards, datasources, etc.)
+# Il sera créé automatiquement au premier lancement de Grafana
+
