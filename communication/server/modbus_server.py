@@ -149,15 +149,21 @@ class ModbusServer(Server):
                 # En cas d'erreur, retourner une valeur par défaut
                 bess_sp_values = [0]
 
-            if bess_sp_values and len(bess_sp_values) > 0:  # type: ignore
-                bess_sp: float = float(int(bess_sp_values[0]))  # type: ignore
+            if bess_sp_values and len(bess_sp_values) > 0:
+                # Les valeurs sont stockées multipliées par 100, donc on divise par 100
+                bess_sp: float = float(int(bess_sp_values[0])) / 100.0  # type: ignore
             else:
                 bess_sp: float = 0.0
 
-        watchdog_bess_values = self.slave_context.getValues(  # type: ignore
-            3, self.REG_WATCHDOG_BESS, 1
-        )
-        if watchdog_bess_values and len(watchdog_bess_values) > 0:  # type: ignore
+        try:
+            watchdog_bess_values = self.slave_context.getValues(  # type: ignore
+                3, self.REG_WATCHDOG_BESS, 1
+            )
+        except Exception:
+            # En cas d'erreur, retourner une valeur par défaut
+            watchdog_bess_values = [0]
+
+        if watchdog_bess_values and len(watchdog_bess_values) > 0:
             watchdog_bess: float = float(int(watchdog_bess_values[0]))  # type: ignore
         else:
             watchdog_bess: float = 0.0

@@ -75,10 +75,13 @@ class StateMachine:
         self.update_state()  # type: ignore
 
     def is_watchdog_disconnected(self) -> bool:
-        return self.watchdog.get_state() == WatchdogState.DISCONNECTED
+        # UNKNOWN est considéré comme DISCONNECTED car on n'a pas encore reçu de données
+        state = self.watchdog.get_state()
+        return state == WatchdogState.DISCONNECTED or state == WatchdogState.UNKNOWN
 
     def is_watchdog_connected(self) -> bool:
-        return self.watchdog.get_state() != WatchdogState.DISCONNECTED
+        # Seul ONLINE est considéré comme connecté
+        return self.watchdog.get_state() == WatchdogState.ONLINE
 
     def get_state(self) -> str:
         return self.state  # type: ignore

@@ -115,3 +115,21 @@ Le système démarre deux threads :
 
 - Thread d'agrégation : collecte et agrégation des données toutes les secondes (par défaut)
 - Thread de traitement : traitement métier et génération de commandes toutes les secondes (par défaut)
+
+## Visualisation des données
+
+Les données collectées et stockées dans les bases SQLite peuvent être visualisées en local avec Grafana.
+
+### Lancement de Grafana
+
+Un docker compose est configuré dans le dossier `grafana/` pour lancer Grafana avec accès aux bases de données SQLite :
+
+```bash
+cd grafana
+docker-compose up -d
+```
+
+Grafana sera accessible à l'adresse : <http://localhost:3000>
+
+Les dashboards et datasources sont automatiquement provisionnés au démarrage. Consultez le
+[README du dossier grafana](grafana/README.md) pour plus de détails sur la configuration et l'utilisation.
