@@ -8,19 +8,13 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_INSTALL_PLUGINS=frser-sqlite-datasource
       - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=frser-sqlite-datasource
-      # Configuration pour charger automatiquement les dashboards et datasources
-      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     volumes:
-      # Montage du dossier db pour accéder aux bases SQLite
-      - ../db:/var/lib/grafana/db:ro
-      # Persistance des données Grafana (dashboards, datasources, etc.)
-      # Le dossier data/ sera créé automatiquement et versionné dans Git
-      - ./data:/var/lib/grafana
-      # Configuration de provisioning pour charger automatiquement dashboards et datasources
+      - ../db:/db:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
       - ./provisioning:/etc/grafana/provisioning
     restart: unless-stopped
     networks:
